@@ -15,19 +15,20 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
+app.use(require('./middleware/cookieParser'));
+app.use(Auth.createSession);
 
-
-app.get('/', 
+app.get('/', Auth.verifySession,
 (req, res) => {
   res.render('index');
 });
 
-app.get('/create', 
+app.get('/create', Auth.verifySession,
 (req, res) => {
   res.render('index');
 });
 
-app.get('/links', 
+app.get('/links', Auth.verifySession,
 (req, res, next) => {
   models.Links.getAll()
     .then(links => {
@@ -38,7 +39,7 @@ app.get('/links',
     });
 });
 
-app.post('/links', 
+app.post('/links', Auth.verifySession,
 (req, res, next) => {
   var url = req.body.url;
   if (!models.Links.isValidUrl(url)) {
@@ -77,8 +78,80 @@ app.post('/links',
 /************************************************************/
 // Write your authentication routes here
 /************************************************************/
+app.get('/login', (req, res) => {
+  res.render('login');
+})
 
+app.get('/signup', (req, res) => {
+  res.render('signup');
+})
 
+app.get('/logout', (req, res, next) => {
+  return models.Sessions.delete({hash: req.cookies.shortlyid})
+    .then(() => {
+      res.clearCookie('shortlyid');
+      res.redirect('/login');
+    })
+    .error(error => {
+      res.status(500).send(error);
+    })
+})
+
+app.post('/login', (req, res, next) => {
+  let username = req.body.username;
+  let password = req.body.password;
+
+  // find user by username
+  return models.Users.get({username})
+    .then((user) => {
+      // if !found or password is not valid
+      if (!user || !models.Users.compare(password, user.password, user.salt)) {
+        // redirect to '/login'
+        throw new Error('Username or password not valid');
+      }
+      return models.Sessions.update({id: req.session.id}, {userId: user.id});
+    })
+    .then(() => {
+      // otherwise, redirect to '/'
+      res.redirect('/');
+    })
+    .error((error) => {
+      res.status.send(error);
+    })
+    .catch(() => {
+      res.redirect('/login');
+    })
+
+})
+
+app.post('/signup', (req, res, next) => {
+  let username = req.body.username;
+  let password = req.body.password;
+  // check for user
+  return models.Users.get({username})
+    .then((user) => {
+      // if exists, redirect to /signup
+      if (user) {
+        console.log('username has already exists!');
+        throw user;
+      }
+      // otherwise, create a user
+      return models.Users.create({ username, password });
+    })
+    .then((results) => {
+      // upgrade session to associate with user
+      return models.Sessions.update({ id: req.session.id }, { userId: results.insertId});
+    })
+    .then(() => {
+      res.redirect('/');
+    })
+    .error(error => res.status(500).send(error))
+    .catch((user) => {
+      res.redirect('/signup');
+    })
+
+  // redirect the user to '/' route
+})
 
 /************************************************************/
 // Handle the code parameter route last - if all other routes fail
