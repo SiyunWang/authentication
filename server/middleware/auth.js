@@ -31,13 +31,13 @@ module.exports.createSession = (req, res, next) => {
         .then((session) => {
           res.cookie('shortlyid', session.hash);
           return session;
-        })
+        });
     })
     // otherwise -> set session on req object
     .then((session) => {
       req.session = session;
       next();
-    })
+    });
 
 };
 
@@ -51,4 +51,4 @@ module.exports.verifySession = (req, res, next) => {
   } else {
     next();
   }
-}
+};
